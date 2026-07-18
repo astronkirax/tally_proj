@@ -1,0 +1,40 @@
+name: Deploy AuditWedge
+
+# Auto-deploys to the server on every push to main. Manual runs via "Run workflow".
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_ed25519 \
+            "$SSH_USER@$SSH_HOST" 'bash -s' <<'EOF'
+          set -e
+          cd /opt/tally_proj
+          echo "Pulling latest main..."
+          git fetch --all --quiet
+          git reset --hard origin/main
+          echo "Installing dependencies..."
+          .venv/bin/pip install -q -r auditwedge/requirements.txt
+          echo "Restarting service..."
+          systemctl restart tally-audit
+          sleep 5
+          systemctl is-active tally-audit
+          echo "Deploy complete."
+          EOF
