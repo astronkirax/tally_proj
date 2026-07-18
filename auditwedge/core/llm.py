@@ -72,7 +72,9 @@ def chat_json(system: str, user: str, *, model_name: str | None = None,
             **extra,
         )
         return json.loads(resp.choices[0].message.content)
-    except Exception:
+    except Exception as e:  # surface API errors (rate limits, auth, timeouts) in the logs
+        import sys
+        print(f"[llm.chat_json] {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         return None
 
 

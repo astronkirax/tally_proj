@@ -116,3 +116,11 @@ class BankAdapter(ABC):
 
 class ParseError(RuntimeError):
     """Raised when the statement cannot be parsed into a clean, chaining Statement."""
+
+
+class PdfPasswordError(ParseError):
+    """The PDF is encrypted and no (or a wrong) password was supplied."""
+
+
+class NoTextError(ParseError):
+    """The PDF has no extractable text layer (e.g. a scanned image)."""

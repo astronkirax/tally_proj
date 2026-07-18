@@ -22,8 +22,9 @@ class AnalysisResult:
     stats: dict
 
 
-def analyze(statement_source, invoice_source=None, use_llm: bool = False) -> AnalysisResult:
-    st = load_statement(statement_source)
+def analyze(statement_source, invoice_source=None, use_llm: bool = False,
+            password: str | None = None) -> AnalysisResult:
+    st = load_statement(statement_source, password=password)
     stats = classify_statement(st, use_llm=use_llm)
     recon = reconcile(st)
     flags = find_exceptions(st)

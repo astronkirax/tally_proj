@@ -7,6 +7,7 @@ Run:  streamlit run app/streamlit_app.py
 """
 from __future__ import annotations
 
+import os
 import pathlib
 import sys
 
@@ -34,8 +35,20 @@ SEV_UI = {"high": st.error, "medium": st.warning, "low": st.info}
 
 
 @st.cache_data(show_spinner=False)
-def run_analysis(pdf_bytes: bytes, xlsx_bytes: bytes | None, use_llm: bool):
-    return analyze(pdf_bytes, xlsx_bytes, use_llm=use_llm)
+def run_analysis(pdf_bytes: bytes, xlsx_bytes: bytes | None, use_llm: bool, password: str):
+    res = analyze(pdf_bytes, xlsx_bytes, use_llm=use_llm, password=password or None)
+    # On success, optionally persist the working paper to a server directory.
+    out_dir = os.getenv("OUTPUT_DIR")
+    if out_dir:
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+            info = res.statement.info
+            fname = f"AuditWedge_{info.account_no or 'stmt'}_{info.from_date}_{info.to_date}.xlsx"
+            with open(os.path.join(out_dir, fname), "wb") as fh:
+                fh.write(build_workpaper(res.statement, res.recon, res.flags, res.stats))
+        except Exception as e:  # never fail the request because of a save issue
+            print(f"[save] {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+    return res
 
 
 def txn_dataframe(statement) -> pd.DataFrame:
@@ -73,6 +86,11 @@ st.caption("Upload a bank statement → auto reconciliation + auditor red-flags 
 with st.sidebar:
     st.header("Inputs")
     pdf = st.file_uploader("Bank statement (PDF)", type=["pdf"])
+    pdf_password = st.text_input(
+        "PDF password (only if the file is locked)",
+        type="password",
+        help="Many bank statements are protected with your PAN, date of birth, or account number.",
+    )
     xlsx = st.file_uploader("Purchase invoices (Excel, optional)", type=["xlsx"])
     have_key = llm_available()
     use_llm = st.toggle(
@@ -96,7 +114,7 @@ if pdf is None:
 try:
     with st.spinner("Reading statement, classifying, and scanning for red flags… "
                     "(non-HDFC banks are read by AI and can take a minute)"):
-        res = run_analysis(pdf.getvalue(), xlsx.getvalue() if xlsx else None, use_llm)
+        res = run_analysis(pdf.getvalue(), xlsx.getvalue() if xlsx else None, use_llm, pdf_password)
 except Exception as exc:  # noqa: BLE001
     st.error(f"Could not process this statement: {exc}")
     st.stop()

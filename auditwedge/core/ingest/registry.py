@@ -1,7 +1,7 @@
 """Bank-format detection + the one entry point the rest of the app calls."""
 from __future__ import annotations
 
-from core.ingest.base import BankAdapter, ParseError
+from core.ingest.base import BankAdapter, NoTextError, ParseError
 from core.ingest.generic_llm import GenericLLMAdapter
 from core.ingest.hdfc import HDFCAdapter
 from core.ingest.pdf import extract_text
@@ -27,13 +27,18 @@ def supported_banks() -> list[str]:
     return names
 
 
-def load_statement(source, allow_ai: bool = True) -> Statement:
+def load_statement(source, password: str | None = None, allow_ai: bool = True) -> Statement:
     """PDF (path / bytes / upload) -> canonical :class:`Statement`.
 
     Tries a dedicated adapter first; falls back to the generic AI parser for any other
-    bank when a DeepSeek key is configured.
+    bank when a DeepSeek key is configured. ``password`` unlocks protected PDFs.
     """
-    text = extract_text(source)
+    text = extract_text(source, password=password)
+    if len(text.strip()) < 40:
+        raise NoTextError(
+            "No readable text found in this PDF. If it is a scanned image or photo, "
+            "OCR isn't supported yet — please upload a digital (text) statement."
+        )
     adapter = detect(text)
     if adapter is None:
         if allow_ai and llm_available():
