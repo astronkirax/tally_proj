@@ -70,6 +70,11 @@ RULES: tuple[Rule, ...] = (
     Rule(("ADVANCE",), "Driver Advances", "individual", "Driver Advance", 0.7, DrCr.DEBIT),
     Rule(("TAXI", "CAB ", "INNOVA", "ROADSTER", "ROADSTAR"), "Vehicle Hire / Taxi",
          "individual", "Vehicle Hire", 0.65, DrCr.DEBIT),
+    # Generic UPI catch-alls (KVB & others) — keep LAST so specific rules win first.
+    Rule(("UPI-CR", "UPI CR", "IMPS-CR", "NEFT-CR"), "UPI / Bank Receipts", "individual",
+         "Receipts", 0.6, DrCr.CREDIT),
+    Rule(("UPI-DR", "UPI DR", "IMPS-DR", "NEFT-DR", "UPI-", "UPI "), "UPI / Bank Payments",
+         "individual", "Payments", 0.6, DrCr.DEBIT),
 )
 
 # --- counterparty name extraction ------------------------------------------
@@ -81,7 +86,9 @@ def extract_counterparty(narration: str, dr_cr: DrCr) -> str | None:
     up = narration.upper()
     parts = [p.strip() for p in re.split(r"[-]", narration) if p.strip()]
     if up.startswith("UPI"):
-        # UPI-<NAME>-<vpa>-<bank>-<ref>-<remark>
+        # HDFC: UPI-<NAME>-<vpa>...   |   KVB: UPI-CR-<ref>-<NAME>-<bank>...
+        if len(parts) > 3 and parts[1] in ("CR", "DR"):
+            return parts[3]
         return parts[1] if len(parts) > 1 else None
     if up.startswith("IMPS"):
         # IMPS-<ref>-<NAME>-<bank>-...

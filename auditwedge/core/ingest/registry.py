@@ -4,13 +4,14 @@ from __future__ import annotations
 from core.ingest.base import BankAdapter, NoTextError, ParseError
 from core.ingest.generic_llm import GenericLLMAdapter
 from core.ingest.hdfc import HDFCAdapter
+from core.ingest.kvb import KVBAdapter
 from core.ingest.pdf import extract_text
 from core.llm import llm_available
 from core.schema import Statement
 
 # Dedicated (fast, free, offline) adapters. Register new banks here — most specific
 # first. Any bank NOT matched here routes to the generic AI parser when a key is set.
-ADAPTERS: list[type[BankAdapter]] = [HDFCAdapter]
+ADAPTERS: list[type[BankAdapter]] = [HDFCAdapter, KVBAdapter]
 
 
 def detect(text: str) -> BankAdapter | None:

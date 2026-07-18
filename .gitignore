@@ -12,6 +12,11 @@ id_*
 *.xlsx
 *.xls
 *.csv
+# Generated outputs (contain real financial data)
+AuditWedge_*.xml
+*_tally.xml
+Tally_*.xml
+outputs/
 
 # ─── Python ───
 .venv/
