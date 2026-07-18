@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+# Real-data fixtures stay local — never publish to the public repo.
+*.xlsx
+*.pdf
+*.output

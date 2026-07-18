@@ -1,0 +1,34 @@
+# ─── Secrets — NEVER commit ───
+.env
+**/.env
+*.pem
+*_rsa
+*_ed25519
+id_*
+
+# ─── Real financial data — NEVER publish to a public repo ───
+# The app needs NO committed statements/invoices; users upload their own.
+*.pdf
+*.xlsx
+*.xls
+*.csv
+
+# ─── Python ───
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+**/.pytest_cache/
+
+# ─── Tooling / agent dirs (not part of the app) ───
+.claude/
+.agents/
+**/.claude/
+**/.agents/
+.plans/
+
+# ─── Misc ───
+*.output
+.DS_Store

@@ -1,0 +1,14 @@
+# AuditWedge MVP — core dependencies (runs locally with zero external accounts)
+pymupdf>=1.24        # PDF parsing (fitz) — proven on the HDFC sample
+pydantic>=2.6        # canonical data schema
+pandas>=2.2          # table handling + Streamlit display
+openpyxl>=3.1        # Excel working-paper export
+streamlit>=1.36      # MVP web UI
+python-dotenv>=1.0   # load .env config
+openai>=1.40         # OpenAI-compatible client — used for DeepSeek (classification + generic parser)
+pytest>=8.0          # golden-file tests
+
+# --- Deferred to the persistence milestone (not needed for the local MVP) ---
+# sqlmodel>=0.0.22
+# psycopg[binary]>=3.2
+# alembic>=1.13
