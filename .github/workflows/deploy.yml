@@ -30,11 +30,14 @@ jobs:
           echo "Pulling latest main..."
           git fetch --all --quiet
           git reset --hard origin/main
-          echo "Installing dependencies..."
+          echo "Python deps..."
           .venv/bin/pip install -q -r auditwedge/requirements.txt
-          echo "Restarting service..."
-          systemctl restart tally-audit
-          sleep 5
-          systemctl is-active tally-audit
+          echo "Building web frontend..."
+          cd auditwedge/web && npm ci --silent && npm run build
+          cd /opt/tally_proj
+          echo "Restarting services..."
+          systemctl restart auditwedge-api auditwedge-web tally-audit
+          sleep 6
+          systemctl is-active auditwedge-api auditwedge-web
           echo "Deploy complete."
           EOF
