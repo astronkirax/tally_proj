@@ -172,9 +172,164 @@ def _exceptions(wb, flags: list[ExceptionFlag]):
     _widths(ws, [10, 22, 34, 13, 11, 7, 70])
 
 
-def build_workpaper(st: Statement, recon: ReconResult, flags: list[ExceptionFlag], stats: dict) -> bytes:
+def _summary_sheet(wb, s):
+    ws = wb.create_sheet("Summary")
+    ws["A1"] = "Summary — Receipts / Payments / Turnover / GST"
+    ws["A1"].font = _TITLE_FONT
+    r = 3
+    ws.cell(row=r, column=1, value="RECEIPTS").font = Font(bold=True); r += 1
+    for lbl, v in [("Business Receipts (Sundry Debtors)", s.biz_receipts),
+                   ("Suspense Receipts", s.sus_receipts), ("Total Receipts", s.total_receipts)]:
+        r = _kv(ws, r, lbl, v, money=True)
+    r += 1
+    ws.cell(row=r, column=1, value="PAYMENTS").font = Font(bold=True); r += 1
+    for lbl, v in [("Business Payments (Sundry Creditors)", s.biz_payments),
+                   ("Suspense Payments", s.sus_payments), ("Bank Charges", s.charges),
+                   ("Total Payments", s.total_payments)]:
+        r = _kv(ws, r, lbl, v, money=True)
+    r += 1
+    ws.cell(row=r, column=1, value="TURNOVER & GST (both treatments)").font = Font(bold=True); r += 1
+    for lbl, v in [("GST Turnover — cab (masters)", s.gst_turnover),
+                   ("Statement Turnover (gross receipts)", s.stmt_turnover),
+                   ("GST — Cab Services @ 5%", s.gst_cab),
+                   ("Commission income (masters)", s.commission_base),
+                   ("GST — Commission @ 18%", s.gst_commission)]:
+        r = _kv(ws, r, lbl, v, money=True)
+    r += 1
+    for n in s.notes:
+        ws.cell(row=r, column=1, value="• " + n).font = Font(italic=True, color="808080"); r += 1
+    _widths(ws, [42, 20])
+
+
+def _two_sided(ws, title, left_groups, right_groups, left_tail=None):
+    ws["A1"] = title
+    ws["A1"].font = _TITLE_FONT
+    for col, h in [(1, "Particulars"), (2, "Amount"), (4, "Particulars"), (5, "Amount")]:
+        c = ws.cell(row=3, column=col, value=h); c.fill = _HEADER_FILL; c.font = _HEADER_FONT
+
+    def emit(groups, base_col, tail):
+        r = 4
+        for gname, lines in groups:
+            ws.cell(row=r, column=base_col, value=gname).font = Font(bold=True)
+            gt = ws.cell(row=r, column=base_col + 1,
+                         value=float(sum(a for _, a in lines))); gt.number_format = MONEY_FMT
+            gt.font = Font(bold=True); r += 1
+            for name, amt in lines:
+                ws.cell(row=r, column=base_col, value="    " + name)
+                c = ws.cell(row=r, column=base_col + 1, value=float(amt)); c.number_format = MONEY_FMT
+                r += 1
+        if tail:
+            for name, amt in tail:
+                ws.cell(row=r, column=base_col, value=name).font = Font(bold=True)
+                c = ws.cell(row=r, column=base_col + 1, value=float(amt)); c.number_format = MONEY_FMT
+                c.font = Font(bold=True); r += 1
+        return r
+
+    lr = emit(left_groups, 1, left_tail)
+    rr = emit(right_groups, 4, None)
+    tr = max(lr, rr) + 1
+    lt = sum(a for _, ls in left_groups for _, a in ls) + sum(a for _, a in (left_tail or []))
+    rt = sum(a for _, ls in right_groups for _, a in ls)
+    for col, tot in [(1, lt), (2, lt), (4, rt), (5, rt)]:
+        if col in (1, 4):
+            ws.cell(row=tr, column=col, value="Total").font = Font(bold=True)
+        else:
+            c = ws.cell(row=tr, column=col, value=float(tot)); c.number_format = MONEY_FMT
+            c.font = Font(bold=True)
+    _widths(ws, [34, 15, 3, 34, 15])
+
+
+def _group(lines):
+    """[(group, ledger, amount)] -> [(group, [(ledger, amount)])] preserving order."""
+    out, seen = [], {}
+    for gr, led, amt in lines:
+        if gr not in seen:
+            seen[gr] = []
+            out.append((gr, seen[gr]))
+        seen[gr].append((led, amt))
+    return out
+
+
+def _pnl_sheet(wb, p):
+    ws = wb.create_sheet("Profit & Loss")
+    exp = _group([(l.group, l.ledger, l.amount) for l in p.expenses])
+    inc = _group([(l.group, l.ledger, l.amount) for l in p.income])
+    _two_sided(ws, "Profit & Loss A/c", exp, inc, left_tail=[("Nett Profit", p.net_profit)])
+
+
+def _bs_sheet(wb, b):
+    ws = wb.create_sheet("Balance Sheet")
+    liab = _group([(l.group, l.ledger, l.amount) for l in b.liabilities])
+    asset = _group([(l.group, l.ledger, l.amount) for l in b.assets])
+    _two_sided(ws, "Balance Sheet", liab, asset)
+
+
+def _crosscheck_sheet(wb, checks):
+    ws = wb.create_sheet("Cross-checks")
+    _header_row(ws, ["Item", "Bank / Invoice", "Books (masters)", "Status"])
+    for i, cc in enumerate(checks, start=2):
+        ws.cell(row=i, column=1, value=cc.item)
+        c = ws.cell(row=i, column=2, value=float(cc.bank_or_invoice)); c.number_format = MONEY_FMT
+        if cc.masters is not None:
+            m = ws.cell(row=i, column=3, value=float(cc.masters)); m.number_format = MONEY_FMT
+        s = ws.cell(row=i, column=4, value=cc.status)
+        if "review" in cc.status:
+            s.fill = _SEV_FILL["medium"]
+    _widths(ws, [34, 16, 16, 24])
+
+
+def _gst_sheet(wb, gst):
+    ws = wb.create_sheet("GST")
+    ws["A1"] = "GST — computation (both treatments)"
+    ws["A1"].font = _TITLE_FONT
+    r = _kv(ws, 3, "GSTIN", gst.gstin)
+    r = _kv(ws, r, "Return period (MMYYYY)", gst.ret_period)
+    r = _kv(ws, r, "Supply type", "Intra-state (CGST+SGST)" if gst.intra_state else "Inter-state (IGST)")
+    r += 1
+    _header_row(ws, ["Treatment", "Taxable", "Rate %", "IGST", "CGST", "SGST", "Total tax"], row=r)
+    r += 1
+    for sc in (gst.cab, gst.commission):
+        ws.cell(row=r, column=1, value=sc.label)
+        for c, v in enumerate([sc.taxable, sc.rate, sc.igst, sc.cgst, sc.sgst, sc.total_tax], start=2):
+            cell = ws.cell(row=r, column=c, value=float(v))
+            if c != 3:
+                cell.number_format = MONEY_FMT
+        r += 1
+    _widths(ws, [40, 15, 8, 13, 13, 13, 14])
+
+
+def _itr_sheet(wb, itr):
+    ws = wb.create_sheet("ITR figures")
+    ws["A1"] = f"ITR figures — {itr.form}, AY {itr.assessment_year}"
+    ws["A1"].font = _TITLE_FONT
+    r = 3
+    for title, d in [("Profit & Loss schedule", itr.pl), ("Balance Sheet schedule", itr.bs),
+                     ("Computation of income & tax", itr.computation)]:
+        ws.cell(row=r, column=1, value=title).font = Font(bold=True)
+        r += 1
+        for k, v in d.items():
+            label = k.replace("_", " ").title()
+            if isinstance(v, (int, float)):
+                r = _kv(ws, r, label, float(v), money=True)
+            else:
+                r = _kv(ws, r, label, str(v))
+        r += 1
+    _widths(ws, [40, 22])
+
+
+def build_workpaper(st: Statement, recon: ReconResult, flags: list[ExceptionFlag], stats: dict,
+                    financials=None, gst=None, itr=None) -> bytes:
     wb = Workbook()
     _cover(wb, st, recon, flags, stats)
+    if financials is not None:
+        _summary_sheet(wb, financials.summary)
+        _pnl_sheet(wb, financials.pnl)
+        _bs_sheet(wb, financials.balance_sheet)
+        _crosscheck_sheet(wb, financials.cross_checks)
+    if gst is not None:
+        _gst_sheet(wb, gst)
+    if itr is not None:
+        _itr_sheet(wb, itr)
     _reconciliation(wb, recon)
     _transactions(wb, st)
     _ledger_summary(wb, st)

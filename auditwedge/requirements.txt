@@ -6,6 +6,9 @@ openpyxl>=3.1        # Excel working-paper export
 streamlit>=1.36      # MVP web UI
 python-dotenv>=1.0   # load .env config
 openai>=1.40         # OpenAI-compatible client — used for DeepSeek (classification + generic parser)
+fastapi>=0.115       # backend API (wraps the core engine for the web frontend)
+uvicorn>=0.30        # ASGI server for FastAPI
+python-multipart>=0.0.9  # multipart form uploads (statement/invoices/masters)
 pytest>=8.0          # golden-file tests
 
 # --- Deferred to the persistence milestone (not needed for the local MVP) ---

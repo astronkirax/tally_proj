@@ -19,7 +19,12 @@ import streamlit as st  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 
 from core.export.tally_xml import build_tally_xml  # noqa: E402
+from core.export.vouchers_excel import tally_xml_to_excel  # noqa: E402
 from core.export.workpaper import build_workpaper  # noqa: E402
+from core.financials.gst import gstr1_bytes, gstr3b_bytes  # noqa: E402
+from core.financials.itr import itr_bytes  # noqa: E402
+from core.financials.masters import example_template, read_masters, write_template  # noqa: E402
+from core.ingest.invoices import load_invoices  # noqa: E402
 from core.ingest.registry import ADAPTERS  # noqa: E402
 from core.llm import llm_available  # noqa: E402
 from core.pipeline import analyze  # noqa: E402
@@ -35,8 +40,10 @@ SEV_UI = {"high": st.error, "medium": st.warning, "low": st.info}
 
 
 @st.cache_data(show_spinner=False)
-def run_analysis(pdf_bytes: bytes, xlsx_bytes: bytes | None, use_llm: bool, password: str):
-    res = analyze(pdf_bytes, xlsx_bytes, use_llm=use_llm, password=password or None)
+def run_analysis(pdf_bytes: bytes, xlsx_bytes: bytes | None, use_llm: bool, password: str,
+                 masters_bytes: bytes | None):
+    masters = read_masters(masters_bytes) if masters_bytes else None
+    res = analyze(pdf_bytes, xlsx_bytes, use_llm=use_llm, password=password or None, masters=masters)
     # On success, optionally persist the working paper to a server directory.
     out_dir = os.getenv("OUTPUT_DIR")
     if out_dir:
@@ -92,6 +99,14 @@ with st.sidebar:
         help="Many bank statements are protected with your PAN, date of birth, or account number.",
     )
     xlsx = st.file_uploader("Purchase invoices (Excel, optional)", type=["xlsx"])
+    masters_file = st.file_uploader(
+        "Client masters (Excel — for P&L / Balance Sheet / GST / ITR)", type=["xlsx"], key="masters")
+    mc1, mc2 = st.columns(2)
+    mc1.download_button("Blank template", data=write_template(),
+                        file_name="client_masters_template.xlsx", width="stretch")
+    mc2.download_button("Example", data=example_template(),
+                        file_name="client_masters_example.xlsx", width="stretch")
+    st.caption("Fill the masters to also get the financial statements, GST and ITR outputs.")
     have_key = llm_available()
     use_llm = st.toggle(
         "Use AI (DeepSeek) for ambiguous rows",
@@ -114,7 +129,8 @@ if pdf is None:
 try:
     with st.spinner("Reading statement, classifying, and scanning for red flags… "
                     "(non-HDFC banks are read by AI and can take a minute)"):
-        res = run_analysis(pdf.getvalue(), xlsx.getvalue() if xlsx else None, use_llm, pdf_password)
+        res = run_analysis(pdf.getvalue(), xlsx.getvalue() if xlsx else None, use_llm, pdf_password,
+                           masters_file.getvalue() if masters_file else None)
 except Exception as exc:  # noqa: BLE001
     st.error(f"Could not process this statement: {exc}")
     st.stop()
@@ -143,26 +159,86 @@ st.caption(f"**{info.account_name}**  ·  {info.bank}  ·  A/C {info.account_no}
            f"{info.from_date} → {info.to_date}  ·  _read via {parser_used}_")
 
 # ---- downloads -------------------------------------------------------------
-d1, d2, _ = st.columns([1, 1, 3])
-d1.download_button(
-    "⬇️ Working paper (Excel)",
-    data=build_workpaper(st_obj, recon, flags, stats),
-    file_name=f"AuditWedge_{info.account_no or 'statement'}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    use_container_width=True,
-)
-d2.download_button(
-    "⬇️ Tally vouchers (XML)",
-    data=build_tally_xml(st_obj),
-    file_name=f"Tally_{info.account_no or 'vouchers'}.xml",
-    mime="application/xml",
-    use_container_width=True,
-)
+fin = res.financials
+invoices = load_invoices(xlsx.getvalue()) if xlsx else []
+tally_xml = build_tally_xml(st_obj, invoices=invoices, bank_ledger=f"{info.bank} Bank",
+                            company=info.account_name or "")
+acct = info.account_no or "statement"
+
+st.subheader("Downloads")
+r1 = st.columns(3)
+r1[0].download_button("Working paper (Excel)",
+                      data=build_workpaper(st_obj, recon, flags, stats, financials=fin, gst=res.gst, itr=res.itr),
+                      file_name=f"AuditWedge_{acct}.xlsx", width="stretch")
+r1[1].download_button("Tally vouchers (XML)", data=tally_xml,
+                      file_name=f"Tally_{acct}.xml", mime="application/xml", width="stretch")
+r1[2].download_button("Vouchers (Excel)", data=tally_xml_to_excel(tally_xml),
+                      file_name=f"Vouchers_{acct}.xlsx", width="stretch")
+if fin is not None:
+    r2 = st.columns(3)
+    r2[0].download_button("GSTR-3B (JSON)", data=gstr3b_bytes(res.gst, "cab"),
+                          file_name=f"GSTR3B_{acct}.json", mime="application/json", width="stretch")
+    r2[1].download_button("GSTR-1 (JSON)", data=gstr1_bytes(res.gst, "cab"),
+                          file_name=f"GSTR1_{acct}.json", mime="application/json", width="stretch")
+    r2[2].download_button("ITR (JSON)", data=itr_bytes(res.itr),
+                          file_name=f"ITR_{acct}.json", mime="application/json", width="stretch")
+else:
+    st.caption("💡 Upload the client masters (sidebar) to also get financial statements, GST and ITR outputs.")
 
 # ---- tabs ------------------------------------------------------------------
-tab_flags, tab_txns, tab_recon = st.tabs(
-    [f"🚩 Exceptions ({len(flags)})", f"📄 Transactions ({len(st_obj.transactions)})", "📊 Reconciliation"]
-)
+_names = (["Financials", "GST", "ITR"] if fin is not None else []) + [
+    f"Exceptions ({len(flags)})", f"Transactions ({len(st_obj.transactions)})", "Reconciliation"]
+_tabs = st.tabs(_names)
+_base = 0
+
+if fin is not None:
+    _base = 3
+    with _tabs[0]:
+        s = fin.summary
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Net profit", f"₹{fin.pnl.net_profit:,.2f}")
+        m2.metric("Balance sheet total", f"₹{fin.balance_sheet.total_assets:,.2f}")
+        m3.metric("Suspense plug", f"₹{fin.balance_sheet.suspense:,.2f}")
+        cA, cB = st.columns(2)
+        with cA:
+            st.markdown("**Profit & Loss**")
+            st.dataframe(pd.DataFrame([{"Group": l.group, "Ledger": l.ledger, "Amount": float(l.amount)}
+                                       for l in fin.pnl.income + fin.pnl.expenses]),
+                         width="stretch", hide_index=True,
+                         column_config={"Amount": st.column_config.NumberColumn(format="%.2f")})
+        with cB:
+            st.markdown("**Balance Sheet**")
+            st.dataframe(pd.DataFrame(
+                [{"Side": "Liability", "Group": l.group, "Ledger": l.ledger, "Amount": float(l.amount)} for l in fin.balance_sheet.liabilities]
+                + [{"Side": "Asset", "Group": l.group, "Ledger": l.ledger, "Amount": float(l.amount)} for l in fin.balance_sheet.assets]),
+                width="stretch", hide_index=True,
+                column_config={"Amount": st.column_config.NumberColumn(format="%.2f")})
+        st.markdown("**Cross-checks (bank / invoices vs books)**")
+        st.dataframe(pd.DataFrame([{"Item": c.item, "Bank/Invoice": float(c.bank_or_invoice),
+                                    "Books": float(c.masters) if c.masters is not None else None,
+                                    "Status": c.status} for c in fin.cross_checks]),
+                     width="stretch", hide_index=True)
+    with _tabs[1]:
+        g = res.gst
+        st.caption(f"GSTIN {g.gstin} · period {g.ret_period} · "
+                   f"{'intra-state (CGST+SGST)' if g.intra_state else 'inter-state (IGST)'}")
+        st.dataframe(pd.DataFrame([
+            {"Treatment": sc.label, "Taxable": float(sc.taxable), "Rate %": float(sc.rate),
+             "CGST": float(sc.cgst), "SGST": float(sc.sgst), "IGST": float(sc.igst),
+             "Total tax": float(sc.total_tax)} for sc in (g.cab, g.commission)]),
+            width="stretch", hide_index=True)
+    with _tabs[2]:
+        it = res.itr
+        st.caption(f"{it.form} · AY {it.assessment_year} · FY {it.financial_year}")
+        c1, c2 = st.columns(2)
+        c1.markdown("**P&L schedule**")
+        c1.dataframe(pd.DataFrame(it.pl.items(), columns=["Item", "Amount"]), width="stretch", hide_index=True)
+        c2.markdown("**Balance Sheet schedule**")
+        c2.dataframe(pd.DataFrame(it.bs.items(), columns=["Item", "Amount"]), width="stretch", hide_index=True)
+        st.markdown("**Computation of income & tax**")
+        st.dataframe(pd.DataFrame(it.computation.items(), columns=["Item", "Value"]), width="stretch", hide_index=True)
+
+tab_flags, tab_txns, tab_recon = _tabs[_base], _tabs[_base + 1], _tabs[_base + 2]
 
 with tab_flags:
     if not flags:

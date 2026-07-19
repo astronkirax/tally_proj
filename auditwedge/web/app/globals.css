@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============ Design tokens — dark-first (fintech-premium) ============ */
+:root,
+.dark {
+  --bg: #0a0b0f;
+  --bg-2: #0d0f15;
+  --panel: #14161d;
+  --panel-2: #191c25;
+  --elevated: #20242f;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #e9ebf1;
+  --text-2: #b7bdca;
+  --muted: #7c8394;
+  --accent: #7c6bf0;
+  --accent-2: #a78bfa;
+  --pos: #34d399;
+  --neg: #fb7185;
+  --high: #f87171;
+  --medium: #fbbf24;
+  --low: #60a5fa;
+  --ring: rgba(124, 107, 240, 0.55);
+  --glass: rgba(255, 255, 255, 0.045);
+  color-scheme: dark;
+}
+
+.light {
+  --bg: #f6f7f9;
+  --bg-2: #eef0f4;
+  --panel: #ffffff;
+  --panel-2: #ffffff;
+  --elevated: #ffffff;
+  --border: rgba(12, 14, 22, 0.09);
+  --border-strong: rgba(12, 14, 22, 0.16);
+  --text: #14171f;
+  --text-2: #3a4150;
+  --muted: #6b7280;
+  --accent: #6d5cf0;
+  --accent-2: #7c6bf0;
+  --pos: #059669;
+  --neg: #e11d48;
+  --high: #dc2626;
+  --medium: #d97706;
+  --low: #2563eb;
+  --ring: rgba(109, 92, 240, 0.4);
+  --glass: rgba(12, 14, 22, 0.03);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-elevated: var(--elevated);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
+  --color-high: var(--high);
+  --color-medium: var(--medium);
+  --color-low: var(--low);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius: 0.85rem;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.011em;
+}
+
+.app-bg {
+  background:
+    radial-gradient(55rem 55rem at 85% -15%, color-mix(in oklab, var(--accent) 13%, transparent), transparent 55%),
+    radial-gradient(48rem 48rem at -10% 5%, color-mix(in oklab, var(--accent-2) 9%, transparent), transparent 50%),
+    var(--bg);
+  min-height: 100dvh;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+.gradient-text {
+  background: linear-gradient(120deg, var(--text) 20%, color-mix(in oklab, var(--accent) 78%, var(--text)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.shimmer {
+  background: linear-gradient(100deg, var(--panel-2) 30%, var(--elevated) 50%, var(--panel-2) 70%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+::-webkit-scrollbar-track { background: transparent; }
+
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 6px; }
+
+/* ============ premium depth / motion ============ */
+.orb {
+  position: fixed;
+  border-radius: 999px;
+  filter: blur(90px);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+  animation: drift 16s ease-in-out infinite;
+}
+.light .orb { opacity: 0.4; }
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(3%, 5%) scale(1.1); }
+}
+.glow {
+  box-shadow: 0 0 0 1px var(--border), 0 24px 70px -24px color-mix(in oklab, var(--accent) 45%, transparent);
+}
+.hover-lift { transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.22s ease; }
+.hover-lift:hover { transform: translateY(-3px); }
+.grid-fade {
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(60% 55% at 50% 40%, #000 0%, transparent 75%);
+  mask-image: radial-gradient(60% 55% at 50% 40%, #000 0%, transparent 75%);
+}
+.rail-line {
+  background: linear-gradient(var(--border-strong), transparent);
+}
+.sheen {
+  background: linear-gradient(120deg, transparent 30%, color-mix(in oklab, var(--accent) 14%, transparent) 50%, transparent 70%);
+}
+

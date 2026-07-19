@@ -16,6 +16,10 @@ id_*
 AuditWedge_*.xml
 *_tally.xml
 Tally_*.xml
+OUT_*
+GSTR*.json
+GSTR*.JSON
+ITR_*.json
 outputs/
 
 # ─── Python ───

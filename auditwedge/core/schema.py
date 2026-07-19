@@ -48,6 +48,7 @@ class Transaction(BaseModel):
     category: str | None = None
     confidence: float = 0.0
     source: str | None = None  # 'rule' | 'llm' | 'unclassified'
+    bucket: str | None = None  # 'business' | 'suspense' | 'reversal' | 'charge' (financials tagging)
 
     @property
     def signed_amount(self) -> Decimal:
